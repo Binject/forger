@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"debug/pe"
+	"flag"
 	"fmt"
 	"encoding/binary"
 	"io"
@@ -12,7 +13,12 @@ import (
 const CERTIFICATE_TABLE = 4
 
 func main() {
-	signedFile, err := os.Open("C:\\Users\\admin\\Desktop\\sysinternals\\autoruns.exe")
+	signedFilePath := flag.String("i", "", "File to copy the signature from")
+	targetFilePath := flag.String("t", "", "File to be signed")
+	outputFilePath := flag.String("o", "", "File that will be written to")
+	flag.Parse()
+
+	signedFile, err := os.Open(*signedFilePath)
 	if err != nil {
 		fmt.Printf("Error: %s\n", err)
 		return
@@ -35,7 +41,7 @@ func main() {
 	certTableSR.Seek(0, io.SeekStart)
 	binary.Read(certTableSR, binary.LittleEndian, &cert)
 
-	targetFile, err := os.Open("C:\\Users\\admin\\Desktop\\Payload.exe")
+	targetFile, err := os.Open(*targetFilePath)
 	if err != nil {
 		fmt.Printf("Error: %s\n", err)
 		return
@@ -47,7 +53,7 @@ func main() {
 		fmt.Printf("Error: %s\n", err)
 		return
 	}
-	outputFile, err := os.OpenFile("C:\\Users\\admin\\Desktop\\SignedPayload.exe", os.O_RDWR|os.O_CREATE, os.FileMode(0755))
+	outputFile, err := os.OpenFile(*outputFilePath, os.O_RDWR|os.O_TRUNC, os.FileMode(0755))
 	if err != nil {
 		fmt.Printf("Error: %s\n", err)
 		return
