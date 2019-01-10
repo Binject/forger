@@ -65,12 +65,14 @@ func main() {
 		return
 	}
 
+	certTableInfo := &pe.DataDirectory{
+		VirtualAddress: uint32(fileSize),
+		Size:			uint32(len(cert)),
+	}
+
 	// seek to Certificate Table entry of Data Directories
 	outputFile.Seek(certTableLoc, 0)
-	// write the start of the new Certificate Table
-	binary.Write(outputFile, binary.LittleEndian, Int64ToBytes(fileSize))
-	// write the size of the Certificate Table
-	binary.Write(outputFile, binary.LittleEndian, Int64ToBytes(int64(len(cert))))
+	binary.Write(outputFile, binary.LittleEndian, certTableInfo)
 	outputFile.Seek(0, 2)
 	// append the cert(s)
 	binary.Write(outputFile, binary.LittleEndian, cert)
@@ -82,7 +84,7 @@ func GetCertTableInfo(file *os.File) (int64, int64, int64, error) {
 		return 0, 0, 0, err
 	}
 
-	// make sure PR is valid
+	// validate PE and grab offset of PE header
 	var dosheader [96]byte
 	var sign [4]byte
 	file.ReadAt(dosheader[0:], 0)
@@ -123,7 +125,7 @@ func GetCertTableInfo(file *os.File) (int64, int64, int64, error) {
 			fmt.Printf("pe32 optional header has unexpected Magic of 0x%x", oh32.Magic)
 		}
 
-		certTableDataLoc = 128
+		certTableDataLoc = base + 20 + 128
 		certTableOffset = oh32.DataDirectory[CERTIFICATE_TABLE].VirtualAddress
 		certTableSize = oh32.DataDirectory[CERTIFICATE_TABLE].Size
 
@@ -136,7 +138,7 @@ func GetCertTableInfo(file *os.File) (int64, int64, int64, error) {
 			fmt.Printf("pe32+ optional header has unexpected Magic of 0x%x", oh64.Magic)
 		}
 
-		certTableDataLoc = 144
+		certTableDataLoc = base + 20 + 144
 		certTableOffset = oh64.DataDirectory[CERTIFICATE_TABLE].VirtualAddress
 		certTableSize = oh64.DataDirectory[CERTIFICATE_TABLE].Size
 	}
@@ -144,8 +146,3 @@ func GetCertTableInfo(file *os.File) (int64, int64, int64, error) {
 	return certTableDataLoc, int64(certTableOffset), int64(certTableSize), nil
 }
 
-func Int64ToBytes(n int64) []byte {
-	buf := bytes.NewBuffer([]byte{})
-	binary.Write(buf, binary.LittleEndian, n)
-	return buf.Bytes()[:4]
-}
