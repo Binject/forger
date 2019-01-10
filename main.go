@@ -53,7 +53,7 @@ func main() {
 		fmt.Printf("Error: %s\n", err)
 		return
 	}
-	outputFile, err := os.OpenFile(*outputFilePath, os.O_RDWR|os.O_TRUNC, os.FileMode(0755))
+	outputFile, err := os.OpenFile(*outputFilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.FileMode(0755))
 	if err != nil {
 		fmt.Printf("Error: %s\n", err)
 		return
@@ -72,6 +72,7 @@ func main() {
 
 	// seek to Certificate Table entry of Data Directories
 	outputFile.Seek(certTableLoc, 0)
+	// write the offset and size of the new Certificate Table
 	binary.Write(outputFile, binary.LittleEndian, certTableInfo)
 	outputFile.Seek(0, 2)
 	// append the cert(s)
