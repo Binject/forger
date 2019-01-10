@@ -1,11 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"debug/pe"
+	"encoding/binary"
 	"flag"
 	"fmt"
-	"encoding/binary"
 	"io"
 	"os"
 )
@@ -18,21 +17,39 @@ func main() {
 	outputFilePath := flag.String("o", "", "File that will be written to")
 	flag.Parse()
 
-	signedFile, err := os.Open(*signedFilePath)
+	if (*signedFilePath == "") || (*targetFilePath == "") || (*outputFilePath == "") {
+		fmt.Printf("Error: Need values for all flags\n")
+		fmt.Printf("i: %v\n", *signedFilePath)
+		fmt.Printf("t: %v\n", *targetFilePath)
+		fmt.Printf("o: %v\n", *outputFilePath)
+	} else {
+		result := SigRip(*signedFilePath, *targetFilePath, *outputFilePath)
+		if result != nil {
+			fmt.Printf("Error running SigRip: %v\n", result.Error())
+		} else {
+			fmt.Printf("Worked, output file is at: %v\n", *outputFilePath)
+		}
+	}
+
+}
+
+// SigRip takes the path of a signed file, a file to sign, and writes a new file location taking the signature from the first file and adding it to the second file
+func SigRip(signedFilePath, targetFilePath, outputFilePath string) error {
+	signedFile, err := os.Open(signedFilePath)
 	if err != nil {
 		fmt.Printf("Error: %s\n", err)
-		return
+		return err
 	}
 	defer signedFile.Close()
 
 	_, certTableOffset, certTableSize, err := GetCertTableInfo(signedFile)
 	if err != nil {
 		fmt.Printf("Error: %s\n", err)
-		return
+		return err
 	}
 	if certTableOffset == 0 || certTableSize == 0 {
 		fmt.Println("Input file is not signed!")
-		return
+		return err
 	}
 
 	// grab the cert
@@ -41,33 +58,33 @@ func main() {
 	certTableSR.Seek(0, io.SeekStart)
 	binary.Read(certTableSR, binary.LittleEndian, &cert)
 
-	targetFile, err := os.Open(*targetFilePath)
+	targetFile, err := os.Open(targetFilePath)
 	if err != nil {
 		fmt.Printf("Error: %s\n", err)
-		return
+		return err
 	}
 	defer targetFile.Close()
 
 	certTableLoc, _, _, err := GetCertTableInfo(targetFile)
 	if err != nil {
 		fmt.Printf("Error: %s\n", err)
-		return
+		return err
 	}
-	outputFile, err := os.OpenFile(*outputFilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.FileMode(0755))
+	outputFile, err := os.OpenFile(outputFilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.FileMode(0755))
 	if err != nil {
 		fmt.Printf("Error: %s\n", err)
-		return
+		return err
 	}
 	defer outputFile.Close()
 	fileSize, err := io.Copy(outputFile, targetFile)
 	if err != nil {
 		fmt.Printf("Error: %s\n", err)
-		return
+		return err
 	}
 
 	certTableInfo := &pe.DataDirectory{
 		VirtualAddress: uint32(fileSize),
-		Size:			uint32(len(cert)),
+		Size:           uint32(len(cert)),
 	}
 
 	// seek to Certificate Table entry of Data Directories
@@ -77,8 +94,10 @@ func main() {
 	outputFile.Seek(0, 2)
 	// append the cert(s)
 	binary.Write(outputFile, binary.LittleEndian, cert)
+	return nil
 }
 
+//GetCertTableInfo takes a file and returns the Certificate Table location, offset, and length
 func GetCertTableInfo(file *os.File) (int64, int64, int64, error) {
 	peFile, err := pe.NewFile(file)
 	if err != nil {
@@ -146,4 +165,3 @@ func GetCertTableInfo(file *os.File) (int64, int64, int64, error) {
 
 	return certTableDataLoc, int64(certTableOffset), int64(certTableSize), nil
 }
-
