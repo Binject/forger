@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/Binject/sigtheif-go/pe"
+	"github.com/Binject/forger/pe"
 )
 
 func main() {
