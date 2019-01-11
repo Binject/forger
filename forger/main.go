@@ -14,7 +14,7 @@ func main() {
 	addSig := flag.Bool("a", false, "Add signature from input cert to target file")
 	ripSig := flag.Bool("r", false, "Copy signature to from the input file to disk")
 	checkSig := flag.Bool("C", false, "File to check if signature is present; validity is not checked")
-	//truncate := flag.Bool("T", false, "Remove signature from input file")
+	truncate := flag.Bool("T", false, "Remove signature from input file")
 	signedFilePath := flag.String("i", "", "File to copy the signature from")
 	sigFilePath := flag.String("s", "", "Path to binary signature on disk")
 	targetFilePath := flag.String("t", "", "File to be signed")
@@ -36,7 +36,7 @@ func main() {
 		}
 		outputFileData, err := pe.CopySig(signedFileData, targetFileData)
 		if err != nil {
-			log.Printf("Error running SigRip: %v\n", err.Error())
+			log.Printf("Error running forger: %v\n", err.Error())
 			return
 		}
 		ioutil.WriteFile(*outputFilePath, outputFileData, os.FileMode(0755))
@@ -57,7 +57,7 @@ func main() {
 		}
 		outputFileData, err := pe.WriteCert(targetFileData, cert)
 		if err != nil {
-			log.Printf("Error running SigRip: %v\n", err.Error())
+			log.Printf("Error running forger: %v\n", err.Error())
 			return
 		}
 		ioutil.WriteFile(*outputFilePath, outputFileData, os.FileMode(0755))
@@ -74,7 +74,7 @@ func main() {
 		}
 		cert, err := pe.GetCert(signedFileData)
 		if err != nil {
-			log.Printf("Error running SigRip: %v\n", err.Error())
+			log.Printf("Error running forger: %v\n", err.Error())
 			return
 		}
 		ioutil.WriteFile(*outputFilePath, cert, os.FileMode(0755))
@@ -91,7 +91,7 @@ func main() {
 		}
 		containsCert, err := pe.CheckCert(signedFileData)
 		if err != nil {
-			log.Printf("Error running SigRip: %v\n", err.Error())
+			log.Printf("Error running forger: %v\n", err.Error())
 			return
 		}
 		if containsCert {
@@ -99,6 +99,22 @@ func main() {
 		} else {
 			log.Printf("Input file does not contain a cert")
 		}
+	} else if *truncate {
+		if (*signedFilePath == "") || (*outputFilePath == "") {
+			log.Println("Error: '-T' requires '-i', '-o'")
+		}
+		signedFileData, err := ioutil.ReadFile(*signedFilePath)
+		if err != nil {
+			return
+		}
+		outputFileData, err := pe.RemoveCert(signedFileData)
+		if err != nil {
+			log.Printf("Error running forger: %v\n", err.Error())
+			return
+		}
+		ioutil.WriteFile(*outputFilePath, outputFileData, os.FileMode(0755))
+
+		log.Printf("Worked, output file is at: %v\n", *outputFilePath)
 	} else {
 		log.Println("Error: no option selected")
 		return

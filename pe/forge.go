@@ -140,6 +140,31 @@ func WriteCert(peData, cert []byte) ([]byte, error) {
 	return peData, nil
 }
 
+// RemoveCert returns a byte slice of a PE file without it's cert if it has one
+func RemoveCert(peData []byte) ([]byte, error) {
+	certTableLoc, certTableOffset, certTableSize, err := GetCertTableInfo(peData)
+	if err != nil {
+		return nil, err
+	}
+	if certTableOffset == 0 || certTableSize == 0 {
+		return nil, errors.New("input file is not signed")
+	}
+
+	certTableInfo := &pe.DataDirectory{
+		VirtualAddress: uint32(0),
+		Size:           uint32(0),
+	}
+
+	// chage the offset and size of the Certificate Table to zero
+	var certTableInfoBuf bytes.Buffer
+	binary.Write(&certTableInfoBuf, binary.LittleEndian, certTableInfo)
+	peData = append(peData[:certTableLoc], append(certTableInfoBuf.Bytes(), peData[int(certTableLoc) + binary.Size(certTableInfo):]...)...)
+	// remove the cert(s)
+	peData = peData[:certTableOffset]
+
+	return peData, nil
+}
+
 // CheckCert returns true if input byte slice of a PE file contains an embedded cert
 func CheckCert(peData []byte) (bool, error) {
 	_, certTableOffset, certTableSize, err := GetCertTableInfo(peData)
