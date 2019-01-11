@@ -5,16 +5,33 @@ import (
 	"debug/pe"
 	"encoding/binary"
 	"errors"
-	"fmt"
+	"log"
 	"io"
 )
 
+// CERTIFICATE_TABLE is the index of the Certificate Table info in the Data Directory structure
+// in the PE header
 const CERTIFICATE_TABLE = 4
 
-// SigRip takes byte slices of a signed PE file, a PE file to sign, and returns a new byte slice
+// CopySig takes byte slices of a signed PE file, a PE file to sign, and returns a new byte slice
 // of a PE file by taking the signature from the first file and adding it to the second file
-func SigRip(signedFileData, targetFileData []byte) ([]byte, error) {
-	_, certTableOffset, certTableSize, err := GetCertTableInfo(signedFileData)
+func CopySig(signedFileData, targetFileData []byte) ([]byte, error) {
+	cert, err := GetCert(signedFileData)
+	if err != nil {
+		return nil, err
+	}
+
+	outputFileData, err := WriteCert(targetFileData, cert)
+	if err != nil {
+		return nil, err
+	}
+
+	return outputFileData, nil
+}
+
+// GetCert returns the embedded cert from the input byte slice of a PE file
+func GetCert(peData []byte) ([]byte, error) {
+	_, certTableOffset, certTableSize, err := GetCertTableInfo(peData)
 	if err != nil {
 		return nil, err
 	}
@@ -24,34 +41,9 @@ func SigRip(signedFileData, targetFileData []byte) ([]byte, error) {
 
 	// grab the cert
 	cert := make([]byte, certTableSize)
-	cert = signedFileData[certTableOffset:certTableOffset + certTableSize]
+	cert = peData[certTableOffset:certTableOffset + certTableSize]
 
-	certTableLoc, _, _, err := GetCertTableInfo(targetFileData)
-	if err != nil {
-		return nil,  err
-	}
-
-	var outputFileBuf bytes.Buffer
-	targetFileReader := bytes.NewReader(targetFileData)
-	fileSize, err := io.Copy(&outputFileBuf, targetFileReader)
-	if err != nil {
-		return nil, err
-	}
-
-	certTableInfo := &pe.DataDirectory{
-		VirtualAddress: uint32(fileSize),
-		Size:           uint32(len(cert)),
-	}
-
-	// write the offset and size of the new Certificate Table
-	var certTableInfoBuf bytes.Buffer
-	binary.Write(&certTableInfoBuf, binary.LittleEndian, certTableInfo)
-	outputFileData := outputFileBuf.Bytes()
-	outputFileData = append(outputFileData[:certTableLoc], append(certTableInfoBuf.Bytes(), outputFileData[int(certTableLoc) + binary.Size(certTableInfo):]...)...)
-	// append the cert(s)
-	outputFileData = append(outputFileData, cert...)
-
-	return outputFileData, nil
+	return cert, nil
 }
 
 // GetCertTableInfo takes a byte slice of a PE file and returns the Certificate Table location,
@@ -72,7 +64,7 @@ func GetCertTableInfo(peData []byte) (int64, int64, int64, error) {
 		signoff := int64(binary.LittleEndian.Uint32(dosheader[0x3c:]))
 		peDataReader.ReadAt(sign[:], signoff)
 		if !(sign[0] == 'P' && sign[1] == 'E' && sign[2] == 0 && sign[3] == 0) {
-			fmt.Printf("Invalid PE File Format.\n")
+			log.Printf("Invalid PE File Format.\n")
 		}
 		base = signoff + 4
 	} else {
@@ -101,7 +93,7 @@ func GetCertTableInfo(peData []byte) (int64, int64, int64, error) {
 			return 0, 0, 0, err
 		}
 		if oh32.Magic != 0x10b { // PE32
-			fmt.Printf("pe32 optional header has unexpected Magic of 0x%x", oh32.Magic)
+			log.Printf("pe32 optional header has unexpected Magic of 0x%x", oh32.Magic)
 		}
 
 		certTableDataLoc = base + 20 + 128
@@ -114,7 +106,7 @@ func GetCertTableInfo(peData []byte) (int64, int64, int64, error) {
 			return 0, 0, 0, err
 		}
 		if oh64.Magic != 0x20b { // PE32+
-			fmt.Printf("pe32+ optional header has unexpected Magic of 0x%x", oh64.Magic)
+			log.Printf("pe32+ optional header has unexpected Magic of 0x%x", oh64.Magic)
 		}
 
 		certTableDataLoc = base + 20 + 144
@@ -123,4 +115,40 @@ func GetCertTableInfo(peData []byte) (int64, int64, int64, error) {
 	}
 
 	return certTableDataLoc, int64(certTableOffset), int64(certTableSize), nil
+}
+
+// WriteCert takes a byte slice of a PE file and a cert, and returns a byte slice of a PE file
+// signed with the input cert
+func WriteCert(peData, cert []byte) ([]byte, error) {
+	certTableLoc, _, _, err := GetCertTableInfo(peData)
+	if err != nil {
+		return nil,  err
+	}
+
+	certTableInfo := &pe.DataDirectory{
+		VirtualAddress: uint32(len(peData)),
+		Size:           uint32(len(cert)),
+	}
+
+	// write the offset and size of the new Certificate Table
+	var certTableInfoBuf bytes.Buffer
+	binary.Write(&certTableInfoBuf, binary.LittleEndian, certTableInfo)
+	peData = append(peData[:certTableLoc], append(certTableInfoBuf.Bytes(), peData[int(certTableLoc) + binary.Size(certTableInfo):]...)...)
+	// append the cert(s)
+	peData = append(peData, cert...)
+
+	return peData, nil
+}
+
+// CheckCert returns true if input byte slice of a PE file contains an embedded cert
+func CheckCert(peData []byte) (bool, error) {
+	_, certTableOffset, certTableSize, err := GetCertTableInfo(peData)
+	if err != nil {
+		return false, err
+	}
+	if certTableOffset == 0 || certTableSize == 0 {
+		return false, nil
+	}
+
+	return true, nil
 }
