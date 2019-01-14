@@ -5,8 +5,6 @@ import (
 	"debug/pe"
 	"encoding/binary"
 	"errors"
-	"log"
-	"io"
 )
 
 // CERTIFICATE_TABLE is the index of the Certificate Table info in the Data Directory structure
@@ -55,66 +53,29 @@ func GetCertTableInfo(peData []byte) (int64, int64, int64, error) {
 		return 0, 0, 0, err
 	}
 
-	// validate PE and grab offset of PE header
-	var dosheader [96]byte
-	var sign [4]byte
-	peDataReader.ReadAt(dosheader[0:], 0)
-	var base int64
-	if dosheader[0] == 'M' && dosheader[1] == 'Z' {
-		signoff := int64(binary.LittleEndian.Uint32(dosheader[0x3c:]))
-		peDataReader.ReadAt(sign[:], signoff)
-		if !(sign[0] == 'P' && sign[1] == 'E' && sign[2] == 0 && sign[3] == 0) {
-			log.Printf("Invalid PE File Format.\n")
-		}
-		base = signoff + 4
-	} else {
-		base = int64(0)
-	}
+	peHeaderLoc := uint32(binary.LittleEndian.Uint32(peData[0x3c:]))
+	peHeaderLoc += 4
 
-	// read the PE header
-	headerSR := io.NewSectionReader(peDataReader, 0, 1<<63-1)
-	headerSR.Seek(base, io.SeekStart)
-	binary.Read(headerSR, binary.LittleEndian, &peFile.FileHeader)
-
-	var sizeofOptionalHeader32 = uint16(binary.Size(pe.OptionalHeader32{}))
-	var sizeofOptionalHeader64 = uint16(binary.Size(pe.OptionalHeader64{}))
-
-	var oh32 pe.OptionalHeader32
-	var oh64 pe.OptionalHeader64
-	var certTableDataLoc int64
+	var certTableDataLoc uint32
 	var certTableOffset uint32
 	var certTableSize uint32
 
-	// find Certificate Table offset and size based off input PE arch
-	switch peFile.FileHeader.SizeOfOptionalHeader {
-	case sizeofOptionalHeader32:
-		err := binary.Read(headerSR, binary.LittleEndian, &oh32)
-		if err != nil {
-			return 0, 0, 0, err
-		}
-		if oh32.Magic != 0x10b { // PE32
-			log.Printf("pe32 optional header has unexpected Magic of 0x%x", oh32.Magic)
-		}
-
-		certTableDataLoc = base + 20 + 128
-		certTableOffset = oh32.DataDirectory[CERTIFICATE_TABLE].VirtualAddress
-		certTableSize = oh32.DataDirectory[CERTIFICATE_TABLE].Size
-
-	case sizeofOptionalHeader64:
-		err := binary.Read(headerSR, binary.LittleEndian, &oh64)
-		if err != nil {
-			return 0, 0, 0, err
-		}
-		if oh64.Magic != 0x20b { // PE32+
-			log.Printf("pe32+ optional header has unexpected Magic of 0x%x", oh64.Magic)
-		}
-
-		certTableDataLoc = base + 20 + 144
-		certTableOffset = oh64.DataDirectory[CERTIFICATE_TABLE].VirtualAddress
-		certTableSize = oh64.DataDirectory[CERTIFICATE_TABLE].Size
+	arch := peFile.FileHeader.Machine
+	if arch == 0x14c {
+		optionalHeader := peFile.OptionalHeader.(*pe.OptionalHeader32)
+		certTableDataLoc = peHeaderLoc + 20 + 128
+		certTableOffset = optionalHeader.DataDirectory[CERTIFICATE_TABLE].VirtualAddress
+		certTableSize = optionalHeader.DataDirectory[CERTIFICATE_TABLE].Size
+	} else if arch == 0x8664 {
+		optionalHeader := peFile.OptionalHeader.(*pe.OptionalHeader64)
+		certTableDataLoc = peHeaderLoc + 20 + 144
+		certTableOffset = optionalHeader.DataDirectory[CERTIFICATE_TABLE].VirtualAddress
+		certTableSize = optionalHeader.DataDirectory[CERTIFICATE_TABLE].Size
+	} else {
+		return 0, 0, 0, errors.New("architecture not supported")
 	}
 
-	return certTableDataLoc, int64(certTableOffset), int64(certTableSize), nil
+	return int64(certTableDataLoc), int64(certTableOffset), int64(certTableSize), nil
 }
 
 // WriteCert takes a byte slice of a PE file and a cert, and returns a byte slice of a PE file
