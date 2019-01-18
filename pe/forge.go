@@ -2,9 +2,10 @@ package pe
 
 import (
 	"bytes"
-	"debug/pe"
 	"encoding/binary"
 	"errors"
+
+	"github.com/Binject/debug/pe"
 )
 
 // CERTIFICATE_TABLE is the index of the Certificate Table info in the Data Directory structure
@@ -60,18 +61,18 @@ func GetCertTableInfo(peData []byte) (int64, int64, int64, error) {
 	var certTableOffset uint32
 	var certTableSize uint32
 
-	arch := peFile.FileHeader.Machine
-	if arch == 0x14c {
+	switch peFile.FileHeader.Machine {
+	case pe.IMAGE_FILE_MACHINE_I386:
 		optionalHeader := peFile.OptionalHeader.(*pe.OptionalHeader32)
 		certTableDataLoc = peHeaderLoc + 20 + 128
 		certTableOffset = optionalHeader.DataDirectory[CERTIFICATE_TABLE].VirtualAddress
 		certTableSize = optionalHeader.DataDirectory[CERTIFICATE_TABLE].Size
-	} else if arch == 0x8664 {
+	case pe.IMAGE_FILE_MACHINE_AMD64:
 		optionalHeader := peFile.OptionalHeader.(*pe.OptionalHeader64)
 		certTableDataLoc = peHeaderLoc + 20 + 144
 		certTableOffset = optionalHeader.DataDirectory[CERTIFICATE_TABLE].VirtualAddress
 		certTableSize = optionalHeader.DataDirectory[CERTIFICATE_TABLE].Size
-	} else {
+	default:
 		return 0, 0, 0, errors.New("architecture not supported")
 	}
 
