@@ -19,3 +19,7 @@ Forger is a tool that implements various code signing attacks against multiple b
   -t string
         File to be signed
 ```
+
+
+## Read more about the project here:
+https://www.symbolcrash.com/2019/02/23/introducing-symbol-crash/
